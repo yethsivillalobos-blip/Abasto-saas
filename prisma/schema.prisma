@@ -1,0 +1,415 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+/* ---------- Auth.js ---------- */
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+
+  accounts          Account[]
+  sessions          Session[]
+  memberships       Membership[]
+  pushSubscriptions PushSubscription[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+}
+
+/* ---------- Multi-tenant ---------- */
+enum Role {
+  ADMIN
+  CASHIER
+}
+
+model Organization {
+  id             String   @id @default(cuid())
+  name           String
+  businessType   String   @default("General")
+  rif            String?
+  address        String?
+  phone          String?
+  ivaRate        Float    @default(16)
+  exchangeRate   Float    @default(1)
+  invoiceCounter Int      @default(1)
+  controlCounter Int      @default(1)
+  createdAt      DateTime @default(now())
+
+  subscriptionStatus SubscriptionStatus @default(TRIAL)
+  trialEndsAt        DateTime
+  paidUntil          DateTime?
+
+  memberships   Membership[]
+  branches      Branch[]
+  products      Product[]
+  customers     Customer[]
+  sales         Sale[]
+  payments      Payment[]
+  employees     Employee[]
+  payrollParams PayrollParams?
+  payslips      Payslip[]
+  suppliers     Supplier[]
+  payables      Payable[]
+  purchases     Purchase[]
+  subscriptionPayments SubscriptionPayment[]
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum SubPaymentMethod {
+  PAGO_MOVIL
+  ZELLE
+  BINANCE
+  OTRO
+}
+
+enum SubPaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/* ---------- Suscripción de la plataforma (cobro manual) ---------- */
+model SubscriptionPayment {
+  id             String            @id @default(cuid())
+  organizationId String
+  amount         Float
+  method         SubPaymentMethod
+  reference      String?
+  notes          String?
+  status         SubPaymentStatus  @default(PENDING)
+  reportedAt     DateTime          @default(now())
+  reviewedAt     DateTime?
+  reviewedBy     String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model Membership {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  role           Role     @default(CASHIER)
+  branchId       String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?      @relation(fields: [branchId], references: [id])
+
+  @@unique([userId, organizationId])
+}
+
+model Branch {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  address        String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stocks       Stock[]
+  memberships  Membership[]
+  sales        Sale[]
+  employees    Employee[]
+  purchases    Purchase[]
+}
+
+/* ---------- Catálogo / ventas ---------- */
+model Product {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  sku            String?
+  category       String?
+  unit           String  @default("unidad")
+  costPrice      Float   @default(0)
+  salePrice      Float   @default(0)
+  minStock       Int     @default(0)
+  ivaExempt      Boolean @default(false)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stocks        Stock[]
+  saleItems     SaleItem[]
+  purchaseItems PurchaseItem[]
+}
+
+model Stock {
+  id        String @id @default(cuid())
+  productId String
+  branchId  String
+  quantity  Int    @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, branchId])
+}
+
+model Customer {
+  id             String @id @default(cuid())
+  organizationId String
+  name           String
+  doc            String?
+  phone          String?
+  creditLimit    Float  @default(0)
+  balance        Float  @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sales        Sale[]
+  payments     Payment[]
+}
+
+model Sale {
+  id             String   @id @default(cuid())
+  organizationId String
+  branchId       String
+  invoiceNumber  String
+  controlNumber  String
+  date           DateTime @default(now())
+  subtotal       Float
+  exempt         Float
+  taxable        Float
+  iva            Float
+  total          Float
+  paymentMethod  String
+  customerId     String?
+  customerName   String
+  servedByName   String
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  customer     Customer?    @relation(fields: [customerId], references: [id])
+  items        SaleItem[]
+}
+
+model SaleItem {
+  id        String  @id @default(cuid())
+  saleId    String
+  productId String?
+  name      String
+  qty       Int
+  price     Float
+  cost      Float
+  ivaExempt Boolean
+
+  sale    Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  organizationId String
+  customerId     String
+  amount         Float
+  method         String
+  date           DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+/* ---------- Nómina ---------- */
+model Employee {
+  id             String    @id @default(cuid())
+  organizationId String
+  branchId       String
+  name           String
+  cedula         String?
+  cargo          String?
+  salaryBase     Float     @default(0)
+  hireDate       DateTime?
+  active         Boolean   @default(true)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  payslips     Payslip[]
+}
+
+model PayrollParams {
+  id                     String @id @default(cuid())
+  organizationId         String @unique
+  ivssWorker             Float  @default(4)
+  ivssEmployer           Float  @default(9)
+  rpeWorker              Float  @default(0.5)
+  rpeEmployer            Float  @default(2)
+  faovWorker             Float  @default(1)
+  faovEmployer           Float  @default(2)
+  incesEmployer          Float  @default(2)
+  incesWorker            Float  @default(0.5)
+  vacationDaysBase       Int    @default(15)
+  vacationBonusDaysBase  Int    @default(15)
+  utilidadesDays         Int    @default(30)
+  prestSocialDaysQuarter Int    @default(15)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model Payslip {
+  id                String   @id @default(cuid())
+  organizationId    String
+  employeeId        String
+  employeeName      String
+  employeeCedula    String?
+  employeeCargo     String?
+  period            String
+  date              DateTime @default(now())
+  periodDays        Int
+  workedDays        Int
+  restDays          Int
+  absentDays        Int
+  dailyRate         Float
+  earnedSalary      Float
+  bonus             Float    @default(0)
+  foodBonusIncluded Boolean  @default(false)
+  foodBonusAmount   Float    @default(0)
+  dIvss             Float
+  dRpe              Float
+  dFaov             Float
+  totalDeductions   Float
+  totalEarnings     Float
+  netPay            Float
+  eIvss             Float
+  eRpe              Float
+  eFaov             Float
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+/* ---------- Proveedores / cuentas por pagar ---------- */
+model Supplier {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  doc            String?
+  phone          String?
+  email          String?
+  contactName    String?
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payables     Payable[]
+  purchases    Purchase[]
+}
+
+enum PayableStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+model Payable {
+  id             String        @id @default(cuid())
+  organizationId String
+  supplierId     String
+  description    String
+  amount         Float
+  dueDate        DateTime
+  status         PayableStatus @default(PENDING)
+  paidDate       DateTime?
+  paidAmount     Float?
+  notified3d     Boolean       @default(false)
+  notifiedDue    Boolean       @default(false)
+  notifiedLate   Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  purchase     Purchase?
+}
+
+/* ---------- Compras (entrada de mercancía) ---------- */
+enum PurchasePaymentStatus {
+  PAID
+  CREDIT
+}
+
+model Purchase {
+  id             String                @id @default(cuid())
+  organizationId String
+  supplierId     String
+  branchId       String
+  date           DateTime              @default(now())
+  total          Float
+  paymentStatus  PurchasePaymentStatus
+  payableId      String?               @unique
+  notes          String?
+  createdAt      DateTime              @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  payable      Payable?     @relation(fields: [payableId], references: [id])
+  items        PurchaseItem[]
+}
+
+model PurchaseItem {
+  id         String @id @default(cuid())
+  purchaseId String
+  productId  String?
+  name       String
+  qty        Int
+  unitCost   Float
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product? @relation(fields: [productId], references: [id])
+}
+
+/* ---------- Notificaciones push ---------- */
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
