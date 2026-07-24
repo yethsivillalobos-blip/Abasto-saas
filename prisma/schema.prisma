@@ -8,7 +8,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
-/* ---------- Auth.js ---------- */
+// ---------- Auth.js ----------
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -56,7 +56,7 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-/* ---------- Multi-tenant ---------- */
+// ---------- Multi-tenant ----------
 enum Role {
   ADMIN
   CASHIER
@@ -114,7 +114,7 @@ enum SubPaymentStatus {
   REJECTED
 }
 
-/* ---------- Suscripción de la plataforma (cobro manual) ---------- */
+// ---------- Suscripción de la plataforma (cobro manual) ----------
 model SubscriptionPayment {
   id             String            @id @default(cuid())
   organizationId String
@@ -160,7 +160,7 @@ model Branch {
   purchases    Purchase[]
 }
 
-/* ---------- Catálogo / ventas ---------- */
+// ---------- Catálogo / ventas ----------
 model Product {
   id             String  @id @default(cuid())
   organizationId String
@@ -254,7 +254,7 @@ model Payment {
   customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
 }
 
-/* ---------- Nómina ---------- */
+// ---------- Nómina ----------
 model Employee {
   id             String    @id @default(cuid())
   organizationId String
@@ -322,7 +322,7 @@ model Payslip {
   employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
-/* ---------- Proveedores / cuentas por pagar ---------- */
+// ---------- Proveedores / cuentas por pagar ----------
 model Supplier {
   id             String   @id @default(cuid())
   organizationId String
@@ -365,7 +365,7 @@ model Payable {
   purchase     Purchase?
 }
 
-/* ---------- Compras (entrada de mercancía) ---------- */
+// ---------- Compras (entrada de mercancía) ----------
 enum PurchasePaymentStatus {
   PAID
   CREDIT
@@ -402,7 +402,7 @@ model PurchaseItem {
   product  Product? @relation(fields: [productId], references: [id])
 }
 
-/* ---------- Notificaciones push ---------- */
+// ---------- Notificaciones push ----------
 model PushSubscription {
   id        String   @id @default(cuid())
   userId    String
