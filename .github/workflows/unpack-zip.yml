@@ -1,0 +1,55 @@
+name: Descomprimir y organizar el proyecto
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Buscar y descomprimir el zip
+        run: |
+          ZIPFILE=$(find . -maxdepth 1 -iname "*.zip" | head -n 1)
+          if [ -z "$ZIPFILE" ]; then
+            echo "No hay ningun .zip en la raiz del repositorio. No hay nada que hacer."
+            exit 0
+          fi
+          echo "Encontrado: $ZIPFILE"
+
+          mkdir -p /tmp/extracted
+          unzip -o "$ZIPFILE" -d /tmp/extracted
+
+          ENTRIES=$(ls /tmp/extracted)
+          COUNT=$(echo "$ENTRIES" | wc -l)
+          if [ "$COUNT" -eq 1 ] && [ -d "/tmp/extracted/$ENTRIES" ]; then
+            SRC="/tmp/extracted/$ENTRIES"
+          else
+            SRC="/tmp/extracted"
+          fi
+
+          find . -maxdepth 1 ! -name '.' ! -name '.git' ! -name '.github' -exec rm -rf {} +
+
+          cp -r "$SRC"/. .
+
+          find . -maxdepth 1 -iname "*.zip" -delete
+
+      - name: Guardar los cambios en el repositorio
+        run: |
+          git config user.name "abasto-bot"
+          git config user.email "abasto-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Sin cambios que subir."
+          else
+            git commit -m "Auto: descomprimir y reorganizar el proyecto"
+            git push
+          fi
